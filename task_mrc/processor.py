@@ -6,81 +6,87 @@ import collections
 from io import open
 import torch
 from torch.utils.data import TensorDataset
-from transformers.tokenization_bert import whitespace_tokenize
-from util import SquadExample, InputFeatures, _improve_answer_span, _check_is_max_context
-from transformers import BertTokenizer
-
+from transformers.models.bert.tokenization_bert import whitespace_tokenize
+from transformers.data.processors.utils import DataProcessor
+from task_mrc.util import SquadExample, InputFeatures, _improve_answer_span, _check_is_max_context
 
 logger = logging.getLogger(__name__)
 
 
-def read_squad_examples(input_file, is_training):
+class mcrProcessor(DataProcessor):
+    def get_train_examples(self, data_dir):
+        return self._create_examples(os.path.join(data_dir, 'cmrc2018_train.json'), is_training=True)
 
-    def is_whitespace(c):
+    def get_dev_examples(self, data_dir):
+        return self._create_examples(os.path.join(data_dir, 'cmrc2018_dev.json'))
+
+    def is_whitespace(self, c):
         if c == " " or c == "\t" or c == "\r" or c == "\n" or ord(c) == 0x202F:
             return True
         return False
 
-    with open(input_file, "r", encoding='utf-8') as reader:
-        input_data = json.load(reader)["data"]
-
-        examples = []
-        for entry in input_data:
-            for paragraph in entry["paragraphs"]:
-                paragraph_text = paragraph["context"]
-                doc_tokens = []
-                char_to_word_offset = []
-                for c in paragraph_text:
-                    if is_whitespace(c):
-                        continue
-                    doc_tokens.append(c)
-                    char_to_word_offset.append(len(doc_tokens) - 1)
-
-                for qa in paragraph["qas"]:
-                    qas_id = qa["id"]
-                    question_text = qa["question"]
-                    start_position = None
-                    end_position = None
-                    orig_answer_text = None
-                    is_impossible = False
-                    if is_training:
-                        if (len(qa["answers"]) != 1) and (not is_impossible):
-                            raise ValueError("对于训练模式，每个问题应有一个正确答案")
-                        answer = qa["answers"][0]
-                        orig_answer_text = answer["text"]
-                        answer_offset = answer["answer_start"]
-                        answer_length = len(orig_answer_text)
-                        if answer_offset > len(char_to_word_offset) - 1:
-                            logger.warning("样本错误: '%s'  offfset vs. length'%s'", answer_offset, len(char_to_word_offset))
+    def _create_examples(self, data_file, is_training=False):
+        with open(data_file, "r", encoding='utf-8') as reader:
+            input_data = json.load(reader)["data"]
+            examples = []
+            for entry in input_data:
+                for paragraph in entry["paragraphs"]:
+                    paragraph_text = paragraph["context"]
+                    doc_tokens = []
+                    char_to_word_offset = []
+                    for c in paragraph_text:
+                        if self.is_whitespace(c):
                             continue
-                        start_position = char_to_word_offset[answer_offset]
-                        end_position = answer_offset + answer_length - 1
-                        if end_position > len(char_to_word_offset) - 1:
-                            logger.warning("样本错误: '%s' vs. '%s'", end_position, len(char_to_word_offset))
-                            continue
-                        end_position = char_to_word_offset[answer_offset + answer_length - 1]
+                        doc_tokens.append(c)
+                        char_to_word_offset.append(len(doc_tokens) - 1)
 
-                        # 只添加可以从文档中准确恢复文本的答案。如果这不能，可能是由于奇怪的Unicode，将跳过这个例子。
-                        # 注意，对于训练模式，不能保证每个示例都是保留的
-                        actual_text = "".join(doc_tokens[start_position:(end_position + 1)])
-                        cleaned_answer_text = "".join(whitespace_tokenize(orig_answer_text))
-                        if actual_text.find(cleaned_answer_text) == -1:
-                            logger.warning("样本错误: '%s' vs. '%s'", actual_text,cleaned_answer_text)
-                            continue
+                    for qa in paragraph["qas"]:
+                        qas_id = qa["id"]
+                        question_text = qa["question"]
+                        start_position = None
+                        end_position = None
+                        orig_answer_text = None
+                        is_impossible = False
+                        if is_training:
+                            if (len(qa["answers"]) != 1) and (not is_impossible):
+                                raise ValueError("对于训练模式，每个问题应有一个正确答案")
+                            answer = qa["answers"][0]
+                            orig_answer_text = answer["text"]
+                            answer_offset = answer["answer_start"]
+                            answer_length = len(orig_answer_text)
+                            if answer_offset > len(char_to_word_offset) - 1:
+                                logger.warning("样本错误: '%s'  offfset vs. length'%s'", answer_offset, len(char_to_word_offset))
+                                continue
+                            start_position = char_to_word_offset[answer_offset]
+                            end_position = answer_offset + answer_length - 1
+                            if end_position > len(char_to_word_offset) - 1:
+                                logger.warning("样本错误: '%s' vs. '%s'", end_position, len(char_to_word_offset))
+                                continue
+                            end_position = char_to_word_offset[answer_offset + answer_length - 1]
 
-                    example = SquadExample(qas_id=qas_id, question_text=question_text, doc_tokens=doc_tokens,
-                                           orig_answer_text=orig_answer_text, start_position=start_position,
-                                           end_position=end_position, is_impossible=is_impossible)
-                    examples.append(example)
-        return examples
+                            # 只添加可以从文档中准确恢复文本的答案。如果这不能，可能是由于奇怪的Unicode，将跳过这个例子。
+                            # 注意，对于训练模式，不能保证每个示例都是保留的
+                            actual_text = "".join(doc_tokens[start_position:(end_position + 1)])
+                            cleaned_answer_text = "".join(whitespace_tokenize(orig_answer_text))
+                            if actual_text.find(cleaned_answer_text) == -1:
+                                logger.warning("样本错误: '%s' vs. '%s'", actual_text,cleaned_answer_text)
+                                continue
 
-# input_file = "./data/cmrc2018_train1.json"
-# version_2_with_negative=0.0
-# examples = read_squad_examples(input_file, is_training=False)
-# print(examples)
+                        example = SquadExample(qas_id=qas_id, question_text=question_text, doc_tokens=doc_tokens,
+                                               orig_answer_text=orig_answer_text, start_position=start_position,
+                                               end_position=end_position, is_impossible=is_impossible)
+                        examples.append(example)
+            return examples
 
 
-def convert_examples_to_features(examples, tokenizer, max_seq_length, doc_stride, max_query_length, is_training,
+# data_dir = "../data/task_mrc"
+# version_2_with_negative = 0.0
+# processor = mcrProcessor()
+# examples = processor.get_train_examples(data_dir)
+# print(examples[0])
+
+
+def convert_examples_to_features(examples, tokenizer, max_seq_length, doc_stride, max_query_length, is_training=False,
                                  cls_token_at_end=False, cls_token='[CLS]', sep_token='[SEP]', pad_token=0,
                                  sequence_a_segment_id=0, sequence_b_segment_id=1, cls_token_segment_id=0,
                                  pad_token_segment_id=0, mask_padding_with_zero=True):
@@ -262,31 +268,48 @@ def convert_examples_to_features(examples, tokenizer, max_seq_length, doc_stride
 #                                         doc_stride=128, max_query_length=64, is_training=False)
 # print(features)
 
-def load_and_cache_examples(args, tokenizer, evaluate=False, output_examples=False):
+def load_and_cache_examples(args, tokenizer, mode, output_examples=False):
+    assert mode == "train" and "dev" or "test", "mode 只支持 train|dev|test"
+
     # 确保分布式训练中只有第一个进程处理数据集，其他进程将使用缓存
-    if args.local_rank not in [-1, 0] and not evaluate:
+    if args.local_rank not in [-1, 0] and mode == "train":
         torch.distributed.barrier()
 
-    input_file = args.predict_file if evaluate else args.train_file
-    cached_features_file = os.path.join(os.path.dirname(input_file), 'cached_{}_{}_{}'.format(
-        'dev' if evaluate else 'train', list(filter(None, args.model_name.split('/'))).pop(),
-        str(args.max_seq_length)))
-    if os.path.exists(cached_features_file) and not args.overwrite_cache and not output_examples:
-        logger.info("Loading features from cached file %s", cached_features_file)
-        features = torch.load(cached_features_file)
-    else:
-        logger.info("Creating features from dataset file at %s", input_file)
-        examples = read_squad_examples(input_file=input_file, is_training=not evaluate)
+    # features 数据保存到本地文件
+    if mode == 'train':
+        cached_features_file = os.path.join(args.data_dir, 'cached_train_{}'.format(args.max_seq_length))
+    if mode == 'dev':
+        cached_features_file = os.path.join(args.data_dir, 'cached_dev_{}'.format(args.max_seq_length))
+    if mode == 'test':
+        cached_features_file = os.path.join(args.data_dir, 'cached_test_{}'.format(args.max_seq_length))
 
-        features = convert_examples_to_features(examples=examples, tokenizer=tokenizer, max_seq_length=args.max_seq_length,
-                                                doc_stride=args.doc_stride, max_query_length=args.max_query_length,
-                                                is_training=not evaluate)
-        if args.local_rank in [-1, 0]:
-            logger.info("Saving features into cached file %s", cached_features_file)
-            torch.save(features, cached_features_file)
+    if os.path.exists(cached_features_file):
+        logger.info("从本地文件加载 features，%s", cached_features_file)
+        features = torch.load(cached_features_file)
+
+    else:
+        logger.info("创建 features，%s", args.data_dir)
+        processor = mcrProcessor()
+        if mode == 'train':
+            examples = processor.get_train_examples(args.data_dir)
+            is_training = True
+        if mode == 'dev':
+            examples = processor.get_dev_examples(args.data_dir)
+            is_training = False
+        if mode == 'test':
+            examples = processor.get_test_examples(args.data_dir)
+            is_training = False
+
+        features = convert_examples_to_features(examples=examples, tokenizer=tokenizer,
+                                                max_seq_length=args.max_seq_length,
+                                                doc_stride=args.doc_stride,
+                                                max_query_length=args.max_query_length,
+                                                is_training=is_training)
+        logger.info("保存 features 到本地文件 %s", cached_features_file)
+        torch.save(features, cached_features_file)
 
     # 确保分布式训练中只有第一个进程处理数据集，其他进程将使用缓存
-    if args.local_rank == 0 and not evaluate:
+    if args.local_rank == 0 and mode == "train":
         torch.distributed.barrier()
 
     all_input_ids = torch.LongTensor([f.input_ids for f in features])
@@ -295,15 +318,15 @@ def load_and_cache_examples(args, tokenizer, evaluate=False, output_examples=Fal
     all_cls_index = torch.LongTensor([f.cls_index for f in features])
     all_p_mask = torch.FloatTensor([f.p_mask for f in features])
 
-    if evaluate:
-        all_example_index = torch.arange(all_input_ids.size(0), dtype=torch.long)
-        dataset = TensorDataset(all_input_ids, all_input_mask, all_segment_ids,
-                                all_example_index, all_cls_index, all_p_mask)
-    else:
+    if mode == "train":
         all_start_positions = torch.LongTensor([f.start_position for f in features])
         all_end_positions = torch.LongTensor([f.end_position for f in features])
         dataset = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_start_positions,
                                 all_end_positions, all_cls_index, all_p_mask)
+    else:
+        all_example_index = torch.arange(all_input_ids.size(0), dtype=torch.long)
+        dataset = TensorDataset(all_input_ids, all_input_mask, all_segment_ids,
+                                all_example_index, all_cls_index, all_p_mask)
 
     if output_examples:
         return dataset, examples, features

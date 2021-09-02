@@ -1,13 +1,18 @@
 import argparse
 import torch
 
+
 def args_mrc():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--train_file", default='./data/cmrc2018_train.json', type=str, help="训练数据集")
-    parser.add_argument("--predict_file", default='./data/cmrc2018_dev.json', type=str, help="验证数据集")
-    parser.add_argument("--model_type", default="albert", type=str, help="bert、albert")
-    parser.add_argument("--model_name", default='voidful/albert_chinese_tiny', type=str, help="model name")
-    parser.add_argument("--output_dir", default='../model_data/', type=str, help="模型输出目录")
+    parser.add_argument("--model_name", default="voidful/albert_chinese_tiny", type=str,
+                        help="voidful/albert_chinese_tiny|nghuyong/ernie-tiny")
+    parser.add_argument('--output_dir', default='../model_data', help='the output dir for model checkpoints')
+    parser.add_argument("--bert_type", default="albert", type=str, help="albert|ernie")
+    parser.add_argument("--task_type", default="task_mrc", type=str, help="任务类型")
+    parser.add_argument("--baseline", default=False, action="store_true", help="是否加载baseline目录的模型")
+    parser.add_argument('--baseline_dir', default='../baseline', help='baseline 模型目录')
+
+    parser.add_argument('--data_dir', default='../data/task_mrc', help='数据集目录')
     parser.add_argument("--cache_dir", default="", type=str, help="从s3下载的模型保存目录")
     parser.add_argument("--do_train", action='store_true', default=True, help="训练模式")
     parser.add_argument("--do_eval", action='store_true', default=True, help="验证模式")

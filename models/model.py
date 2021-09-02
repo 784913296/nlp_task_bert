@@ -4,7 +4,7 @@ import logging
 import math
 import torch
 from transformers import AlbertConfig, BertTokenizer, AlbertForSequenceClassification, \
-    AutoConfig, AutoTokenizer, AutoModelForSequenceClassification
+    AutoConfig, AutoTokenizer, AutoModelForSequenceClassification,AlbertForQuestionAnswering
 from utils.util import ensemble_vote
 from task_ner.albert_crf import AlbertCrfForNer
 
@@ -13,7 +13,8 @@ MODEL_CLASSES = {
     "albert": {
         "task_classes": (AlbertConfig, AlbertForSequenceClassification, BertTokenizer),
         "task_sim": (AlbertConfig, AlbertForSequenceClassification, BertTokenizer),
-        "task_ner": (AlbertConfig, AlbertCrfForNer, BertTokenizer)
+        "task_ner": (AlbertConfig, AlbertCrfForNer, BertTokenizer),
+        "task_mrc": (AlbertConfig, AlbertForQuestionAnswering, BertTokenizer)
     },
     'ernie': {
         "task_classes": (AutoConfig, AutoModelForSequenceClassification, AutoTokenizer),
