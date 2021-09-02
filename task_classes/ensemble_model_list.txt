@@ -1,0 +1,5 @@
+../model_data\albert\task_classes\checkpoint-1600\pytorch_model.bin
+../model_data\albert\task_classes\checkpoint-1400\pytorch_model.bin
+../model_data\albert\task_classes\checkpoint-1200\pytorch_model.bin
+../model_data\albert\task_classes\checkpoint-1000\pytorch_model.bin
+../model_data\albert\task_classes\checkpoint-800\pytorch_model.bin

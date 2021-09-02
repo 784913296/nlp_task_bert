@@ -1,0 +1,1 @@
+{"B-ENT": 0, "I-ENT": 1, "E-ENT": 2, "B-SIT": 3, "E-SIT": 4, "O": 5, "B-HHR": 6, "E-HHR": 7, "I-SIT": 8, "S-SIT": 9, "B-CON": 10, "E-CON": 11, "B-LOC": 12, "E-LOC": 13, "I-LOC": 14, "S-LOC": 15, "[START]": 16, "[END]": 17}
