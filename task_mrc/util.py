@@ -1,21 +1,15 @@
 # coding=utf-8
 from __future__ import absolute_import, division, print_function
-import random
-import numpy as np
-import torch
 
 
 class SquadExample(object):
-    """
-    A single training/test example for the Squad dataset.
-    For examples without an answer, the start and end position are -1.
-    """
-    def __init__(self,qas_id, question_text, doc_tokens, orig_answer_text=None,
-                 start_position=None,end_position=None, is_impossible=None):
+    """ 没有答案的 start_position end_position 为 -1 """
+    def __init__(self, qas_id, question_text, doc_tokens, answer_text=None, start_position=None,
+                 end_position=None, is_impossible=None):
         self.qas_id = qas_id
         self.question_text = question_text
         self.doc_tokens = doc_tokens
-        self.orig_answer_text = orig_answer_text
+        self.answer_text = answer_text
         self.start_position = start_position
         self.end_position = end_position
         self.is_impossible = is_impossible
@@ -25,21 +19,20 @@ class SquadExample(object):
 
     def __repr__(self):
         s = ""
-        s += "qas_id: %s" % (self.qas_id)
-        s += ", question_text: %s" % (self.question_text)
-        s += ", doc_tokens: [%s]" % (" ".join(self.doc_tokens))
+        s += "qas_id: %s" % self.qas_id
+        s += ", question_text: %s" % self.question_text
+        s += ", doc_tokens: [%s]" % self.doc_tokens
         if self.start_position:
-            s += ", start_position: %d" % (self.start_position)
+            s += ", start_position: %d" % self.start_position
         if self.end_position:
-            s += ", end_position: %d" % (self.end_position)
+            s += ", end_position: %d" % self.end_position
         if self.is_impossible:
-            s += ", is_impossible: %r" % (self.is_impossible)
+            s += ", is_impossible: %r" % self.is_impossible
         return s
 
 
 class InputFeatures(object):
-    def __init__(self,
-                 unique_id, example_index, doc_span_index, tokens, token_to_orig_map,token_is_max_context,
+    def __init__(self, unique_id, example_index, doc_span_index, tokens, token_to_orig_map, token_is_max_context,
                  input_ids, input_mask, segment_ids, cls_index, p_mask, paragraph_len, start_position=None,
                  end_position=None, is_impossible=None):
         self.unique_id = unique_id
@@ -76,7 +69,7 @@ def _improve_answer_span(doc_tokens, input_start, input_end, tokenizer, orig_ans
 
 
 def _check_is_max_context(doc_spans, cur_span_index, position):
-    """检查这是词是否“最大上下文”文档"""
+    """ 检查这是词是否“最大上下文”文档 """
     best_score = None
     best_span_index = None
     for (span_index, doc_span) in enumerate(doc_spans):
