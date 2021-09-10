@@ -7,10 +7,8 @@ import collections
 from io import open
 from task_mrc.utils_squad_evaluate import find_all_best_thresh_v2, make_qid_to_has_ans, get_raw_scores
 from transformers.models.bert.tokenization_bert import BasicTokenizer
-from task_mrc.util import SquadExample, InputFeatures
 
 logger = logging.getLogger(__name__)
-
 
 
 RawResult = collections.namedtuple("RawResult",
@@ -121,7 +119,7 @@ def write_predictions(all_examples, all_features, all_results, n_best_size,
                     pred.end_index + 1)]
                 orig_doc_start = feature.token_to_orig_map[pred.start_index]
                 orig_doc_end = feature.token_to_orig_map[pred.end_index]
-                orig_tokens = example.doc_tokens[orig_doc_start:(
+                orig_tokens = example.context[orig_doc_start:(
                     orig_doc_end + 1)]
                 tok_text = " ".join(tok_tokens)
 

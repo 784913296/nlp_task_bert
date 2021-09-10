@@ -1,310 +1,248 @@
-from __future__ import absolute_import, division, print_function
 import os
-import json
 import logging
-import collections
-from io import open
+import pandas as pd
 import torch
 from torch.utils.data import TensorDataset
-from transformers.models.bert.tokenization_bert import whitespace_tokenize
 from transformers.data.processors.utils import DataProcessor
-from task_mrc.util import SquadExample, InputFeatures, _improve_answer_span, _check_is_max_context
+from task_mrc.util import SquadExample, InputFeatures, _check_is_max_context,\
+    get_doc_spans, get_position_start_end
+from task_mrc.conf import args_mrc
+from models.model import create_tokenizer
 
 logger = logging.getLogger(__name__)
 
 
-class mcrProcessor(DataProcessor):
-    def get_train_examples(self, data_dir):
-        return self._create_examples(os.path.join(data_dir, 'cmrc2018_train.json'), is_training=True)
+class mrcProcessor(DataProcessor):
+    def __init__(self, args):
+        self.args = args
+    def get_train_examples(self):
+        data_file = os.path.join(self.args.data_dir, 'train.csv')
+        return self._create_examples(data_file)
 
-    def get_dev_examples(self, data_dir):
-        return self._create_examples(os.path.join(data_dir, 'cmrc2018_dev.json'))
+    def get_dev_examples(self):
+        data_file = os.path.join(self.args.data_dir, 'dev.csv')
+        return self._create_examples(data_file)
 
-    def is_whitespace(self, c):
-        if c == " " or c == "\t" or c == "\r" or c == "\n" or ord(c) == 0x202F:
-            return True
-        return False
+    def get_test_examples(self):
+        data_file = os.path.join(self.args.data_dir, 'test.csv')
+        return self._create_examples(data_file)
 
-    def _create_examples(self, data_file, is_training=False):
-        with open(data_file, "r", encoding='utf-8') as reader:
-            input_data = json.load(reader)["data"]
-            examples = []
-            for entry in input_data:
-                for paragraph in entry["paragraphs"]:
-                    paragraph_text = paragraph["context"]
-                    doc_tokens = []
-                    char_to_word_offset = []
-                    for c in paragraph_text:
-                        if self.is_whitespace(c):
-                            continue
-                        doc_tokens.append(c)
-                        char_to_word_offset.append(len(doc_tokens) - 1)
-
-                    for qa in paragraph["qas"]:
-                        qas_id = qa["id"]
-                        question_text = qa["question"]
-                        start_position = None
-                        end_position = None
-                        orig_answer_text = None
-                        is_impossible = False
-                        if is_training:
-                            if (len(qa["answers"]) != 1) and (not is_impossible):
-                                raise ValueError("对于训练模式，每个问题应有一个正确答案")
-                            answer = qa["answers"][0]
-                            orig_answer_text = answer["text"]
-                            answer_offset = answer["answer_start"]
-                            answer_length = len(orig_answer_text)
-                            if answer_offset > len(char_to_word_offset) - 1:
-                                logger.warning("样本错误: '%s'  offfset vs. length'%s'", answer_offset, len(char_to_word_offset))
-                                continue
-                            start_position = char_to_word_offset[answer_offset]
-                            end_position = answer_offset + answer_length - 1
-                            if end_position > len(char_to_word_offset) - 1:
-                                logger.warning("样本错误: '%s' vs. '%s'", end_position, len(char_to_word_offset))
-                                continue
-                            end_position = char_to_word_offset[answer_offset + answer_length - 1]
-
-                            # 只添加可以从文档中准确恢复文本的答案。如果这不能，可能是由于奇怪的Unicode，将跳过这个例子。
-                            # 注意，对于训练模式，不能保证每个示例都是保留的
-                            actual_text = "".join(doc_tokens[start_position:(end_position + 1)])
-                            cleaned_answer_text = "".join(whitespace_tokenize(orig_answer_text))
-                            if actual_text.find(cleaned_answer_text) == -1:
-                                logger.warning("样本错误: '%s' vs. '%s'", actual_text,cleaned_answer_text)
-                                continue
-
-                        example = SquadExample(qas_id=qas_id, question_text=question_text, doc_tokens=doc_tokens,
-                                               orig_answer_text=orig_answer_text, start_position=start_position,
-                                               end_position=end_position, is_impossible=is_impossible)
-                        examples.append(example)
-            return examples
+    def _create_examples(self, data_file):
+        examples = []
+        columns = ["qas_id", "question_text", "context", "answer_text",
+                   "answer_start", "is_impossible"]
+        df = pd.read_csv(data_file, names=columns, header=0)
+        for index, (qas_id, question_text, context, answer_text,
+                    answer_start, is_impossible) in df.iterrows():
+            example = SquadExample(qas_id=qas_id, question_text=question_text,
+                                   context=context, answer_text=answer_text,
+                                   answer_start=answer_start,
+                                   is_impossible=is_impossible)
+            examples.append(example)
+        return examples
 
 
-# data_dir = "../data/task_mrc"
-# version_2_with_negative = 0.0
-# processor = mcrProcessor()
-# examples = processor.get_train_examples(data_dir)
-# print(examples[0])
-
-
-def convert_examples_to_features(examples, tokenizer, max_seq_length, doc_stride, max_query_length, is_training=False,
-                                 cls_token_at_end=False, cls_token='[CLS]', sep_token='[SEP]', pad_token=0,
-                                 sequence_a_segment_id=0, sequence_b_segment_id=1, cls_token_segment_id=0,
-                                 pad_token_segment_id=0, mask_padding_with_zero=True):
+def convert_examples_to_features(examples, tokenizer, max_seq_length, doc_stride, max_query_length, mode):
     unique_id = 1000000000
     features = []
     for (example_index, example) in enumerate(examples):
-        query_tokens = tokenizer.tokenize(example.question_text)
-        if len(query_tokens) > max_query_length:
-            query_tokens = query_tokens[0:max_query_length]
+        question_text = tokenizer.tokenize(example.question_text)
+        if len(question_text) > max_query_length:
+            question_text = question_text[:max_query_length]
 
-        tok_to_orig_index, orig_to_tok_index, all_doc_tokens = [], [], []
-        for (i, token) in enumerate(example.doc_tokens):
-            orig_to_tok_index.append(len(all_doc_tokens))
-            sub_tokens = tokenizer.tokenize(token)
-            for sub_token in sub_tokens:
-                tok_to_orig_index.append(i)
-                all_doc_tokens.append(sub_token)
+        context = example.context
+        doc_tokens = tokenizer.tokenize(context)
+        doc_tokens_index = []
+        for idx, token in enumerate(doc_tokens):
+            doc_tokens_index.append(idx)
 
-        tok_start_position, tok_end_position = None, None
-        if is_training and example.is_impossible:
-            tok_start_position = -1
-            tok_end_position = -1
-
-        if is_training and not example.is_impossible:
-            tok_start_position = orig_to_tok_index[example.start_position]
-            if example.end_position < len(example.doc_tokens) - 1:
-                tok_end_position = orig_to_tok_index[example.end_position + 1] - 1
-            else:
-                tok_end_position = len(all_doc_tokens) - 1
-            (tok_start_position, tok_end_position) = _improve_answer_span(
-                all_doc_tokens, tok_start_position, tok_end_position, tokenizer, example.orig_answer_text)
-
-        # The -3 accounts for [CLS], [SEP] and [SEP]
-        max_tokens_for_doc = max_seq_length - len(query_tokens) - 3
-
-        # We can have documents that are longer than the maximum sequence length.
-        # To deal with this we do a sliding window approach, where we take chunks
-        # of the up to our max length with a stride of `doc_stride`.
-        _DocSpan = collections.namedtuple("DocSpan", ["start", "length"])   # pylint: disable=invalid-name
-        doc_spans = []
-        start_offset = 0
-        while start_offset < len(all_doc_tokens):
-            length = len(all_doc_tokens) - start_offset
-            if length > max_tokens_for_doc:
-                length = max_tokens_for_doc
-            doc_spans.append(_DocSpan(start=start_offset, length=length))
-            if start_offset + length == len(all_doc_tokens):
-                break
-            start_offset += min(length, doc_stride)
+        # 分词后新的开始跟结束位置
+        tok_start_position, tok_end_position = get_position_start_end(context, example.answer_start,
+                                                              example.answer_text, tokenizer,
+                                                              mode, example.is_impossible)
+        # 每段文档的长度 减去问题长度跟[CLS]、[SEP]、[SEP]
+        max_paragraph_len = max_seq_length - len(question_text) - 3
+        # 获取每个段的开始位置跟长度
+        doc_spans = get_doc_spans(doc_tokens, max_paragraph_len, doc_stride)
 
         for (doc_span_index, doc_span) in enumerate(doc_spans):
-            tokens = []
+            question_and_paragraphs = []
             token_to_orig_map = {}
             token_is_max_context = {}
-            segment_ids = []
 
-            # p_mask: mask with 1 for token than cannot be in the answer (0 for token which can be in an answer)
-            # Original TF implem also keep the classification token (set to 0) (not sure why...)
-            p_mask = []
+            # p_mask: token大于1的掩码不能在答案中(token可以在答案中为0)
+            # CLS p_mask 为0
+            p_mask = [0]
+            question_and_paragraphs.append("[CLS]")
 
-            # CLS token at the beginning
-            if not cls_token_at_end:
-                tokens.append(cls_token)
-                segment_ids.append(cls_token_segment_id)
-                p_mask.append(0)
-                cls_index = 0
-
-            # Query
-            for token in query_tokens:
-                tokens.append(token)
-                segment_ids.append(sequence_a_segment_id)
+            # 问题
+            for token in question_text:
                 p_mask.append(1)
-
-            # SEP token
-            tokens.append(sep_token)
-            segment_ids.append(sequence_a_segment_id)
+                question_and_paragraphs.append(token)
+            question_and_paragraphs.append("[SEP]")
+            # [SEP] p_mask
             p_mask.append(1)
 
-            # Paragraph
+            # 内容段落
+            paragraphs = []
             for i in range(doc_span.length):
                 split_token_index = doc_span.start + i
-                token_to_orig_map[len(
-                    tokens)] = tok_to_orig_index[split_token_index]
-
-                is_max_context = _check_is_max_context(
-                    doc_spans, doc_span_index, split_token_index)
-                token_is_max_context[len(tokens)] = is_max_context
-                tokens.append(all_doc_tokens[split_token_index])
-                segment_ids.append(sequence_b_segment_id)
+                token_to_orig_map[len(question_and_paragraphs)] = doc_tokens_index[split_token_index]
+                is_max_context = _check_is_max_context(doc_spans, doc_span_index, split_token_index)
+                token_is_max_context[len(question_and_paragraphs)] = is_max_context
+                paragraphs.append(doc_tokens[split_token_index])
+                question_and_paragraphs.append(doc_tokens[split_token_index])
                 p_mask.append(0)
             paragraph_len = doc_span.length
 
-            # SEP token
-            tokens.append(sep_token)
-            segment_ids.append(sequence_b_segment_id)
+            # 结尾 [SEP]
             p_mask.append(1)
+            question_and_paragraphs.append("[SEP]")
+            inputs = tokenizer.encode_plus(question_text, paragraphs, add_special_tokens=True,
+                                           max_length=max_seq_length, pad_to_max_length=True,
+                                           truncation="longest_first")
+            input_ids = inputs["input_ids"]
+            token_type_ids = inputs["token_type_ids"]
+            attention_mask = inputs["attention_mask"]
 
-            # CLS token at the end
-            if cls_token_at_end:
-                tokens.append(cls_token)
-                segment_ids.append(cls_token_segment_id)
-                p_mask.append(0)
-                cls_index = len(tokens) - 1  # Index of classification token
-
-            input_ids = tokenizer.convert_tokens_to_ids(tokens)
-
-            # The mask has 1 for real tokens and 0 for padding tokens. Only real
-            # tokens are attended to.
-            input_mask = [1 if mask_padding_with_zero else 0] * len(input_ids)
-
-            # Zero-pad up to the sequence length.
-            while len(input_ids) < max_seq_length:
-                input_ids.append(pad_token)
-                input_mask.append(0 if mask_padding_with_zero else 1)
-                segment_ids.append(pad_token_segment_id)
+            while len(p_mask) < max_seq_length:
                 p_mask.append(1)
 
             assert len(input_ids) == max_seq_length
-            assert len(input_mask) == max_seq_length
-            assert len(segment_ids) == max_seq_length
+            assert len(attention_mask) == max_seq_length
+            assert len(token_type_ids) == max_seq_length
 
             span_is_impossible = example.is_impossible
             start_position = None
             end_position = None
-            if is_training and not span_is_impossible:
-                # For training, if our document chunk does not contain an annotation
-                # we throw it out, since there is nothing to predict.
+            # 训练时，把不包含答案的段落丢弃（即 start_position end_position 都设为0）
+            if mode == "train" and not span_is_impossible:
                 doc_start = doc_span.start
                 doc_end = doc_span.start + doc_span.length - 1
+                doc_offset = len(question_text) + 2
+                start_position = tok_start_position - doc_start + doc_offset
+                end_position = tok_end_position - doc_start + doc_offset + 1
+
                 out_of_span = False
-                if not (tok_start_position >= doc_start
-                        and tok_end_position <= doc_end):
+                if not (tok_start_position >= doc_start and tok_end_position <= doc_end):
                     out_of_span = True
                 if out_of_span:
                     start_position = 0
                     end_position = 0
                     span_is_impossible = True
-                else:
-                    doc_offset = len(query_tokens) + 2
-                    start_position = tok_start_position - doc_start + doc_offset
-                    end_position = tok_end_position - doc_start + doc_offset
 
-            if is_training and span_is_impossible:
+            cls_index = 0
+            if mode == "train" and span_is_impossible:
                 start_position = cls_index
                 end_position = cls_index
 
-            if example_index < 20:
+            if example_index < 1:
                 logger.info("*** Example ***")
-                logger.info("unique_id: %s" % (unique_id))
-                logger.info("example_index: %s" % (example_index))
-                logger.info("doc_span_index: %s" % (doc_span_index))
-                logger.info("tokens: %s" % " ".join(tokens))
-                logger.info("token_to_orig_map: %s" % " ".join(["%d:%d" % (x, y) for (x, y) in token_to_orig_map.items()]))
-                logger.info("token_is_max_context: %s" % " ".join(["%d:%s" % (x, y) for (x, y) in token_is_max_context.items()]))
-                logger.info("input_ids: %s" % " ".join([str(x) for x in input_ids]))
-                logger.info("input_mask: %s" % " ".join([str(x) for x in input_mask]))
-                logger.info("segment_ids: %s" % " ".join([str(x) for x in segment_ids]))
-                if is_training and span_is_impossible:
-                    logger.info("impossible example")
-                if is_training and not span_is_impossible:
-                    answer_text = " ".join(tokens[start_position:(end_position + 1)])
-                    logger.info("start_position: %d" % (start_position))
-                    logger.info("end_position: %d" % (end_position))
-                    logger.info("answer: %s" % (answer_text))
+                logger.info("unique_id: %s" % unique_id)
+                logger.info("example_index: %s" % example_index)
+                logger.info("doc_span_index: %s" % doc_span_index)
+                logger.info("question_text: %s" % question_text)
+                logger.info("paragraphs: %s" % paragraphs)
+                logger.info("question_and_paragraphs: %s" % question_and_paragraphs)
+                logger.info("token_to_orig_map: %s" % token_to_orig_map)
+                logger.info("token_is_max_context: %s" % token_is_max_context)
+                logger.info("input_ids: %s" % input_ids)
+                logger.info("attention_mask: %s" % attention_mask)
+                logger.info("token_type_ids: %s" % token_type_ids)
+                logger.info("p_mask: %s" % p_mask)
 
-            feature = InputFeatures(unique_id=unique_id, example_index=example_index, doc_span_index=doc_span_index,
-                                    tokens=tokens, token_to_orig_map=token_to_orig_map, token_is_max_context=token_is_max_context,
-                                    input_ids=input_ids, input_mask=input_mask, segment_ids=segment_ids, cls_index=cls_index,
-                                    p_mask=p_mask, paragraph_len=paragraph_len, start_position=start_position,
-                                    end_position=end_position, is_impossible=span_is_impossible)
+                if mode == "train" and span_is_impossible:
+                    logger.info("impossible example")
+
+                if mode == "train" and not span_is_impossible:
+                    answer_text = "".join(question_and_paragraphs[start_position:end_position])
+                    logger.info("start_position: %d" % start_position)
+                    logger.info("end_position: %d" % end_position)
+                    logger.info("answer: %s" % answer_text)
+
+                    # 只处理在内容里能还原答案的样本
+                    if answer_text.find(example.answer_text) == -1:
+                        logger.info("样本错误，答案不能在内容了里还原")
+                        continue
+
+            feature = InputFeatures(unique_id=unique_id,
+                                    example_index=example_index,
+                                    doc_span_index=doc_span_index,
+                                    tokens=paragraphs,
+                                    token_to_orig_map=token_to_orig_map,
+                                    token_is_max_context=token_is_max_context,
+                                    input_ids=input_ids,
+                                    attention_mask=attention_mask,
+                                    token_type_ids=token_type_ids,
+                                    cls_index=cls_index,
+                                    p_mask=p_mask,
+                                    paragraph_len=paragraph_len,
+                                    start_position=start_position,
+                                    end_position=end_position,
+                                    is_impossible=span_is_impossible)
             features.append(feature)
             unique_id += 1
-
     return features
 
 
-# tokenizer = BertTokenizer.from_pretrained('bert-base-chinese')
-# features = convert_examples_to_features(examples=examples, tokenizer=tokenizer, max_seq_length=128,
-#                                         doc_stride=128, max_query_length=64, is_training=False)
+# args = args_mrc()
+# logging.basicConfig(format='%(asctime)s - %(levelname)s %(message)s',
+#                     datefmt='%m/%d/%Y %H:%M:%S',
+#                     level=logging.INFO if args.local_rank in [-1, 0] else logging.WARN)
+# processor = mrcProcessor(args)
+# examples = processor.get_train_examples()
+# tokenizer = create_tokenizer(args)
+# features = convert_examples_to_features(examples=examples,
+#                                         tokenizer=tokenizer,
+#                                         max_seq_length=args.max_seq_length,
+#                                         doc_stride=args.doc_stride,
+#                                         max_query_length=args.max_query_length,
+#                                         mode="train")
 # print(features)
 
-def load_and_cache_examples(args, tokenizer, mode, output_examples=False):
-    assert mode == "train" and "dev" or "test", "mode 只支持 train|dev|test"
 
-    # 确保分布式训练中只有第一个进程处理数据集，其他进程将使用缓存
-    if args.local_rank not in [-1, 0] and mode == "train":
-        torch.distributed.barrier()
-
-    # features 数据保存到本地文件
+def read_local_feature(args, mode):
+    """ features 数据保存本地文件名 """
     if mode == 'train':
         cached_features_file = os.path.join(args.data_dir, 'cached_train_{}'.format(args.max_seq_length))
     if mode == 'dev':
         cached_features_file = os.path.join(args.data_dir, 'cached_dev_{}'.format(args.max_seq_length))
     if mode == 'test':
         cached_features_file = os.path.join(args.data_dir, 'cached_test_{}'.format(args.max_seq_length))
+    return cached_features_file
 
+
+def get_examples(processor, mode):
+    if mode == 'train':
+        examples = processor.get_train_examples()
+    elif mode == 'dev':
+        examples = processor.get_dev_examples()
+    elif mode == 'test':
+        examples = processor.get_test_examples()
+    return examples
+
+
+def load_and_cache_examples(args, tokenizer, mode):
+    assert mode == "train" and "dev" or "test", "mode 只支持 train|dev|test"
+
+    # 确保分布式训练中只有第一个进程处理数据集，其他进程将使用缓存
+    if args.local_rank not in [-1, 0] and mode == "train":
+        torch.distributed.barrier()
+
+    # 加载本地缓存文件
+    cached_features_file = read_local_feature(args, mode)
     if os.path.exists(cached_features_file):
         logger.info("从本地文件加载 features，%s", cached_features_file)
         features = torch.load(cached_features_file)
-
     else:
         logger.info("创建 features，%s", args.data_dir)
-        processor = mcrProcessor()
-        if mode == 'train':
-            examples = processor.get_train_examples(args.data_dir)
-            is_training = True
-        if mode == 'dev':
-            examples = processor.get_dev_examples(args.data_dir)
-            is_training = False
-        if mode == 'test':
-            examples = processor.get_test_examples(args.data_dir)
-            is_training = False
-
+        processor = mrcProcessor(args)
+        examples = get_examples(processor, mode)
         features = convert_examples_to_features(examples=examples, tokenizer=tokenizer,
                                                 max_seq_length=args.max_seq_length,
                                                 doc_stride=args.doc_stride,
                                                 max_query_length=args.max_query_length,
-                                                is_training=is_training)
+                                                mode=mode)
         logger.info("保存 features 到本地文件 %s", cached_features_file)
         torch.save(features, cached_features_file)
 
@@ -312,22 +250,20 @@ def load_and_cache_examples(args, tokenizer, mode, output_examples=False):
     if args.local_rank == 0 and mode == "train":
         torch.distributed.barrier()
 
-    all_input_ids = torch.LongTensor([f.input_ids for f in features])
-    all_input_mask = torch.LongTensor([f.input_mask for f in features])
-    all_segment_ids = torch.LongTensor([f.segment_ids for f in features])
-    all_cls_index = torch.LongTensor([f.cls_index for f in features])
-    all_p_mask = torch.FloatTensor([f.p_mask for f in features])
+    all_input_ids = torch.LongTensor([f.input_ids for f in features]).to(args.device)
+    all_attention_mask = torch.LongTensor([f.attention_mask for f in features]).to(args.device)
+    all_token_type_ids = torch.LongTensor([f.token_type_ids for f in features]).to(args.device)
+    all_cls_index = torch.LongTensor([f.cls_index for f in features]).to(args.device)
+    all_p_mask = torch.FloatTensor([f.p_mask for f in features]).to(args.device)
 
     if mode == "train":
-        all_start_positions = torch.LongTensor([f.start_position for f in features])
-        all_end_positions = torch.LongTensor([f.end_position for f in features])
-        dataset = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_start_positions,
+        all_start_positions = torch.LongTensor([f.start_position for f in features]).to(args.device)
+        all_end_positions = torch.LongTensor([f.end_position for f in features]).to(args.device)
+        dataset = TensorDataset(all_input_ids, all_attention_mask, all_token_type_ids, all_start_positions,
                                 all_end_positions, all_cls_index, all_p_mask)
     else:
-        all_example_index = torch.arange(all_input_ids.size(0), dtype=torch.long)
-        dataset = TensorDataset(all_input_ids, all_input_mask, all_segment_ids,
+        all_example_index = torch.arange(all_input_ids.size(0), dtype=torch.long).to(args.device)
+        dataset = TensorDataset(all_input_ids, all_attention_mask, all_token_type_ids,
                                 all_example_index, all_cls_index, all_p_mask)
-
-    if output_examples:
-        return dataset, examples, features
     return dataset
+

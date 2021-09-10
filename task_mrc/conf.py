@@ -22,7 +22,7 @@ def args_mrc():
     parser.add_argument("--max_seq_length", default=128, type=int, help="句子最大长度")
     parser.add_argument("--max_query_length", default=64, type=int, help="问题的最大长度")
     parser.add_argument("--max_answer_length", default=30, type=int, help="答案的最大长度")
-    parser.add_argument("--doc_stride", default=128, type=int, help="长文档分割成多个块时，最大的长度")
+    parser.add_argument("--doc_stride", default=256, type=int, help="长文档分割成多个块时，最大的长度")
     parser.add_argument("--per_gpu_train_batch_size", default=128, type=int, help="train_batch_size")
     parser.add_argument("--per_gpu_eval_batch_size", default=128, type=int, help="eval_batch_size")
 
@@ -30,7 +30,7 @@ def args_mrc():
     parser.add_argument('--logging_steps', type=int, default=50, help="Log every X updates steps.")
 
     # warmup
-    parser.add_argument("--num_train_epochs", default=1.0, type=float, help="训练次数")
+    parser.add_argument("--num_train_epochs", default=10, type=float, help="训练次数")
     parser.add_argument("--max_steps", default=-1, type=int, help="训练总次数，会覆盖 num_train_epochs")
     parser.add_argument("--learning_rate", default=5e-5, type=float, help="The initial learning rate for Adam.")
     parser.add_argument("--warmup_steps", default=0, type=int, help="Linear warmup over warmup_steps.")

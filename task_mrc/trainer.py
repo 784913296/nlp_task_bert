@@ -36,11 +36,14 @@ def train(args, train_dataset, model, tokenizer):
 
     no_decay = ['bias', 'LayerNorm.weight']
     optimizer_grouped_parameters = [
-        {'params': [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)], 'weight_decay': args.weight_decay},
-        {'params': [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)], 'weight_decay': 0.0}
+        {'params': [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)],
+         'weight_decay': args.weight_decay},
+        {'params': [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)],
+         'weight_decay': 0.0}
     ]
     optimizer = AdamW(optimizer_grouped_parameters, lr=args.learning_rate, eps=args.adam_epsilon)
-    scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=args.warmup_steps, num_training_steps=t_total)
+    scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=args.warmup_steps,
+                                                num_training_steps=t_total)
     if args.fp16:
         from apex import amp
         model, optimizer = amp.initialize(model, optimizer, opt_level=args.fp16_opt_level)
@@ -59,20 +62,22 @@ def train(args, train_dataset, model, tokenizer):
     logger.info("  Num Epochs = %d", args.num_train_epochs)
     logger.info("  Instantaneous batch size per GPU = %d", args.per_gpu_train_batch_size)
     logger.info("  Total train batch size (w. parallel, distributed & accumulation) = %d",
-                   args.train_batch_size * args.gradient_accumulation_steps * (torch.distributed.get_world_size() if args.local_rank != -1 else 1))
+                args.train_batch_size * args.gradient_accumulation_steps *
+                (torch.distributed.get_world_size() if args.local_rank != -1 else 1))
     logger.info("  Gradient Accumulation steps = %d", args.gradient_accumulation_steps)
     logger.info("  Total optimization steps = %d", t_total)
 
     global_step = 0
     tr_loss, logging_loss = 0.0, 0.0
     model.zero_grad()
-    train_iterator = trange(int(args.num_train_epochs), desc="Epoch", disable=args.local_rank not in [-1, 0])
+    local_rank = args.local_rank in [-1, 0]
+    disable = args.local_rank not in [-1, 0]
+    train_iterator = trange(int(args.num_train_epochs), desc="Epoch", disable=disable)
     set_seed(args)
     for _ in train_iterator:
-        epoch_iterator = tqdm(train_dataloader, desc="Iteration", disable=args.local_rank not in [-1, 0])
+        epoch_iterator = tqdm(train_dataloader, desc="Iteration", disable=disable)
         for step, batch in enumerate(epoch_iterator):
             model.train()
-            batch = tuple(t.to(args.device) for t in batch)
             inputs = {'input_ids': batch[0],
                       'attention_mask': batch[1],
                       'token_type_ids': batch[2],
@@ -102,7 +107,7 @@ def train(args, train_dataset, model, tokenizer):
                 model.zero_grad()
                 global_step += 1
 
-                if args.local_rank in [-1, 0] and args.logging_steps > 0 and global_step % args.logging_steps == 0:
+                if local_rank and args.logging_steps > 0 and global_step % args.logging_steps == 0:
                     # 只在单个GPU时进行评估，否则指标可能不平均
                     if args.local_rank == -1 and args.evaluate_during_training:
                         results = evaluate(args, model, tokenizer)
@@ -113,7 +118,7 @@ def train(args, train_dataset, model, tokenizer):
                     logging_loss = tr_loss
 
                 # Save model checkpoint
-                if args.local_rank in [-1, 0] and args.save_steps > 0 and global_step % args.save_steps == 0:
+                if local_rank and args.save_steps > 0 and global_step % args.save_steps == 0:
                     save_model(args, model, global_step)
 
             if args.max_steps > 0 and global_step > args.max_steps:
@@ -124,15 +129,13 @@ def train(args, train_dataset, model, tokenizer):
             train_iterator.close()
             break
 
-    if args.local_rank in [-1, 0]:
+    if local_rank:
         tb_writer.close()
 
     return global_step, tr_loss / global_step
 
 
-def evaluate(args, model, tokenizer, prefix=""):
-    dataset, examples, features = load_and_cache_examples(args, tokenizer, mode="dev", output_examples=True)
-
+def evaluate(args, model, dataset, examples, features, prefix=""):
     if not os.path.exists(args.output_dir) and args.local_rank in [-1, 0]:
         os.makedirs(args.output_dir)
 
@@ -146,7 +149,6 @@ def evaluate(args, model, tokenizer, prefix=""):
     all_results = []
     for batch in tqdm(eval_dataloader, desc="Evaluating"):
         model.eval()
-        batch = tuple(t.to(args.device) for t in batch)
         with torch.no_grad():
             inputs = {'input_ids': batch[0],
                       'attention_mask': batch[1],

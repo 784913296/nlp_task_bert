@@ -4,7 +4,7 @@ import logging
 import math
 import torch
 from transformers import AlbertConfig, BertTokenizer, AlbertForSequenceClassification, \
-    AutoConfig, AutoTokenizer, AutoModelForSequenceClassification,AlbertForQuestionAnswering
+    AutoConfig, AutoTokenizer, AutoModelForSequenceClassification, AlbertForQuestionAnswering
 from utils.util import ensemble_vote
 from task_ner.albert_crf import AlbertCrfForNer
 
@@ -23,10 +23,10 @@ MODEL_CLASSES = {
 }
 
 
-def create_tokenizer(args):
+def create_tokenizer(args, **kwards):
     config_class, model_class, tokenizer_class = MODEL_CLASSES[args.bert_type][args.task_type]
     tokenizer_kwards = {'do_lower_case': args.do_lower_case}
-    tokenizer = tokenizer_class.from_pretrained(args.model_name, **tokenizer_kwards)
+    tokenizer = tokenizer_class.from_pretrained(args.model_name, **kwards)
     return tokenizer
 
 

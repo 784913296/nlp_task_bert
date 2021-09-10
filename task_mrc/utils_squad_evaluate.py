@@ -370,8 +370,7 @@ def main(OPTS):
                                        OPTS.na_prob_thresh)
     out_eval = make_eval_dict(exact_thresh, f1_thresh)
     if has_ans_qids:
-        has_ans_eval = make_eval_dict(
-            exact_thresh, f1_thresh, qid_list=has_ans_qids)
+        has_ans_eval = make_eval_dict(exact_thresh, f1_thresh, qid_list=has_ans_qids)
         merge_eval(out_eval, has_ans_eval, 'HasAns')
     if no_ans_qids:
         no_ans_eval = make_eval_dict(
