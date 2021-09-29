@@ -6,6 +6,7 @@ from io import open
 import pandas as pd
 from models.model import create_tokenizer
 from task_mrc.conf import args_mrc
+from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +41,7 @@ class CreateDataFile:
         with open(data_file, "r", encoding='utf-8') as f:
             input_data = json.load(f)["data"]
             examples = []
-            for entry in input_data:
+            for entry in tqdm(input_data, desc="正在生成 {}.txt 文件".format(mode)):
                 for paragraph in entry["paragraphs"]:
                     context = paragraph["context"]
                     if not context:

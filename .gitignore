@@ -1,3 +1,9 @@
+/runs
+/data
+/model_data
+/baseline
+*/runs
+
 ##ignore this file##
 /target/
 /.idea/
@@ -46,8 +52,3 @@ Thumbs.db
 /.mvn/
 /mvnw.cmd
 /mvnw
-/runs
-/data
-/model_data
-/baseline
-*/runs

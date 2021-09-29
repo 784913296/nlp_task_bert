@@ -3,7 +3,7 @@ import torch
 import argparse
 from transformers import WEIGHTS_NAME, BertConfig, BertTokenizer, BertForQuestionAnswering,\
     AlbertConfig, AlbertTokenizer, AlbertForQuestionAnswering
-from bert_qa import evaluate
+from task_mrc.trainer import evaluate
 import os
 
 MODEL_CLASSES = {

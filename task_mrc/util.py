@@ -1,5 +1,10 @@
 # coding=utf-8
+import logging
 import collections
+
+
+logger = logging.getLogger(__name__)
+RawResult = collections.namedtuple("RawResult", ["unique_id", "start_logits", "end_logits"])
 
 
 class SquadExample(object):
@@ -47,6 +52,18 @@ class InputFeatures(object):
         self.start_position = start_position
         self.end_position = end_position
         self.is_impossible = is_impossible
+
+
+class EvalOps(object):
+    def __init__(self, data_file, pred_file, out_file="", na_prob_file="na_prob.json",
+                 na_prob_thresh=1.0, out_image_dir=None, verbose=False):
+        self.data_file = data_file
+        self.pred_file = pred_file
+        self.out_file = out_file
+        self.na_prob_file = na_prob_file
+        self.na_prob_thresh = na_prob_thresh
+        self.out_image_dir = out_image_dir
+        self.verbose = verbose
 
 
 def get_position_start_end(context, answer_start, answer_text, tokenizer, mode, is_impossible):
@@ -123,5 +140,4 @@ def _check_is_max_context(doc_spans, cur_span_index, position):
             best_span_index = span_index
 
     return cur_span_index == best_span_index
-
 

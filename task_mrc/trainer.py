@@ -1,15 +1,16 @@
 # coding=utf-8
 from __future__ import absolute_import, division, print_function
-import logging, os
+import os
+import logging
 import torch
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm, trange
 from tensorboardX import SummaryWriter
 from transformers import AdamW, get_linear_schedule_with_warmup
-from task_mrc.utils_squad import RawResult, write_predictions, write_predictions_extended
-from task_mrc.utils_squad_evaluate import EVAL_OPTS, main as evaluate_on_squad
-from task_mrc.processor import load_and_cache_examples
+from task_mrc.util import EvalOps, RawResult
+from task_mrc.write_predict import write_predictions
+from task_mrc.utils_squad_eval import main as evaluate_on_squad
 from models.model import save_model
 from utils.util import set_seed
 
@@ -68,14 +69,13 @@ def train(args, train_dataset, model, tokenizer):
     logger.info("  Total optimization steps = %d", t_total)
 
     global_step = 0
-    tr_loss, logging_loss = 0.0, 0.0
+    tr_loss, logging_loss, log_loss = 0.0, 0.0, 0.0
     model.zero_grad()
     local_rank = args.local_rank in [-1, 0]
-    disable = args.local_rank not in [-1, 0]
-    train_iterator = trange(int(args.num_train_epochs), desc="Epoch", disable=disable)
+    train_iterator = trange(int(args.num_train_epochs), desc="Epoch")
     set_seed(args)
     for _ in train_iterator:
-        epoch_iterator = tqdm(train_dataloader, desc="Iteration", disable=disable)
+        epoch_iterator = tqdm(train_dataloader, desc="Iteration", position=0)
         for step, batch in enumerate(epoch_iterator):
             model.train()
             inputs = {'input_ids': batch[0],
@@ -101,11 +101,15 @@ def train(args, train_dataset, model, tokenizer):
                 torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
 
             tr_loss += loss.item()
+            log_loss += loss.item()
             if (step + 1) % args.gradient_accumulation_steps == 0:
                 optimizer.step()
                 scheduler.step()
                 model.zero_grad()
                 global_step += 1
+                logger.info("EPOCH [%d/%d] global_step=%d loss=%f", _ + 1,
+                            args.num_train_epochs, global_step, log_loss)
+                log_loss = 0.0
 
                 if local_rank and args.logging_steps > 0 and global_step % args.logging_steps == 0:
                     # 只在单个GPU时进行评估，否则指标可能不平均
@@ -136,9 +140,7 @@ def train(args, train_dataset, model, tokenizer):
 
 
 def evaluate(args, model, dataset, examples, features, prefix=""):
-    if not os.path.exists(args.output_dir) and args.local_rank in [-1, 0]:
-        os.makedirs(args.output_dir)
-
+    output_dir = os.path.join(args.output_dir, args.bert_type, args.task_type)
     args.eval_batch_size = args.per_gpu_eval_batch_size * max(1, args.n_gpu)
     eval_sampler = SequentialSampler(dataset) if args.local_rank == -1 else DistributedSampler(dataset)
     eval_dataloader = DataLoader(dataset, sampler=eval_sampler, batch_size=args.eval_batch_size)
@@ -160,25 +162,23 @@ def evaluate(args, model, dataset, examples, features, prefix=""):
         for i, example_index in enumerate(example_indices):
             eval_feature = features[example_index.item()]
             unique_id = int(eval_feature.unique_id)
-            result = RawResult(unique_id=unique_id, start_logits=to_list(outputs[0][i]),
-                               end_logits=to_list(outputs[1][i]))
+            start_logits = to_list(outputs[0][i])
+            end_logits = to_list(outputs[1][i])
+            result = RawResult(unique_id=unique_id, start_logits=start_logits, end_logits=end_logits)
             all_results.append(result)
 
     # Compute predictions
-    output_prediction_file = os.path.join(args.output_dir, "predictions_{}.json".format(prefix))
-    output_nbest_file = os.path.join(args.output_dir, "nbest_predictions_{}.json".format(prefix))
+    output_prediction_file = os.path.join(output_dir, "predictions_{}.json".format(prefix))
+    output_nbest_file = os.path.join(output_dir, "nbest_predictions_{}.json".format(prefix))
+    output_null_log_odds_file = None
     if args.version_2_with_negative:
-        output_null_log_odds_file = os.path.join(args.output_dir, "null_odds_{}.json".format(prefix))
-    else:
-        output_null_log_odds_file = None
+        output_null_log_odds_file = os.path.join(output_dir, "null_odds_{}.json".format(prefix))
 
-    write_predictions(examples, features, all_results, args.n_best_size,
-                      args.max_answer_length, args.do_lower_case, output_prediction_file,
-                      output_nbest_file, output_null_log_odds_file, args.verbose_logging,
-                      args.version_2_with_negative, args.null_score_diff_threshold)
+    write_predictions(examples, features, all_results, output_prediction_file,
+                      output_nbest_file, output_null_log_odds_file, args)
 
     data_file = os.path.join(args.data_dir, "cmrc2018_dev.json")
-    evaluate_options = EVAL_OPTS(data_file=data_file, pred_file=output_prediction_file,
-                                 na_prob_file=output_null_log_odds_file)
+    evaluate_options = EvalOps(data_file=data_file, pred_file=output_prediction_file,
+                               na_prob_file=output_null_log_odds_file)
     results = evaluate_on_squad(evaluate_options)
     return results

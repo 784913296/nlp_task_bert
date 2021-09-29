@@ -25,7 +25,7 @@ def args_ner():
     parser.add_argument("--weight_decay", default=0.0, type=float, help="权重衰减")
     parser.add_argument("--adam_epsilon", default=1e-8, type=float, help="Epsilon for Adam optimizer.")
     parser.add_argument("--max_grad_norm", default=1.0, type=float, help="最大的梯度更新")
-    parser.add_argument("--num_train_epochs", default=1.0, type=float, help="epoch 数目")
+    parser.add_argument("--num_train_epochs", default=5.0, type=float, help="epoch 数目")
     parser.add_argument("--save_steps", type=int, default=100, help="Save checkpoint every X updates steps.")
     parser.add_argument('--seed', type=int, default=42, help="random seed for initialization")
     parser.add_argument("--warmup_steps", default=0, type=int, help="让学习增加到1的步数，在warmup_steps后，再衰减到0")

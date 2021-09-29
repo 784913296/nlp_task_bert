@@ -36,15 +36,10 @@ def real_labels(attention_mask: torch.Tensor, labels: list):
         yield real_label
 
 
-# 去掉标签的填充部分
-def statistical_real_sentences(input_ids: torch.Tensor, mask: torch.Tensor, predict: list):
-    pass
-
-
 class NerProcessor(DataProcessor):
     def get_train_examples(self, data_dir):
         return self._create_examples(
-            os.path.join(data_dir,"train.txt"))
+            os.path.join(data_dir, "train.txt"))
 
     def get_dev_examples(self, data_dir):
         return self._create_examples(
@@ -119,22 +114,19 @@ def crf_convert_examples_to_features(args, examples, tokenizer, max_length=256, 
     return features
 
 
-def load_and_cache_example(args, tokenizer, processor, data_type):
-    type_list = ['train', 'dev', 'test']
-    if data_type not in type_list:
-        raise ValueError("data_type must be one of {}".format(" ".join(type_list)))
-
-    cached_features_file = "cached_{}_{}".format(data_type, str(args.max_seq_length))
+def load_and_cache_example(args, tokenizer, processor, mode):
+    assert mode == "train" or "dev" or "test", "mode 只支持 train|dev|test"
+    cached_features_file = "cached_{}_{}".format(mode, str(args.max_seq_length))
     cached_features_file = os.path.join(args.data_dir, cached_features_file)
     if os.path.exists(cached_features_file):
         features = torch.load(cached_features_file)
     else:
         label_list = processor.get_labels(args)
-        if type_list[0] == data_type:
+        if mode == "train":
             examples = processor.get_train_examples(args.data_dir)
-        elif type_list[1] == data_type:
+        elif mode == "dev":
             examples = processor.get_dev_examples(args.data_dir)
-        elif type_list[2] == data_type:
+        elif mode == "test":
             examples = processor.get_test_examples(args.data_dir)
         else:
             raise ValueError("UNKNOW ERROR")

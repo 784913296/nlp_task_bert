@@ -1,6 +1,5 @@
 # coding=utf-8
 from __future__ import absolute_import, division, print_function
-import os
 import logging
 import torch
 from task_mrc.processor import load_and_cache_examples, convert_examples_to_features
@@ -42,17 +41,17 @@ if __name__ == "__main__":
         args.n_gpu = 1
     args.device = device
 
-    logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s -   %(message)s', datefmt='%m/%d/%Y %H:%M:%S',
+    logging.basicConfig(format='%(asctime)s - %(levelname)s %(message)s', datefmt='%m/%d/%Y %H:%M:%S',
                         level=logging.INFO if args.local_rank in [-1, 0] else logging.WARN)
     logger.warning("Process rank: %s, device: %s, n_gpu: %s, distributed training: %s, 16-bits training: %s",
-                    args.local_rank, device, args.n_gpu, bool(args.local_rank != -1), args.fp16)
+                   args.local_rank, device, args.n_gpu, bool(args.local_rank != -1), args.fp16)
 
     # 确保分布式训练中的第一个过程才会下载model跟vocab
     if args.local_rank not in [-1, 0]:
         torch.distributed.barrier()
 
-    model_file = "../model_data/albert/task_mrc/checkpoint-100/pytorch_model.bin"
-    model = create_model(args, model_file)
+    model_file = "../model_data/ernie/task_mrc/checkpoint-2600/pytorch_model.bin"
+    model = create_model(args)
     model.to(args.device)
 
     if args.do_train:

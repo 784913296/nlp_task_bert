@@ -4,10 +4,11 @@ import torch
 
 def args_mrc():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model_name", default="voidful/albert_chinese_tiny", type=str,
-                        help="voidful/albert_chinese_tiny|nghuyong/ernie-tiny")
+    parser.add_argument("--model_name", default="nghuyong/ernie-tiny", type=str,
+                        help="voidful/albert_chinese_tiny"
+                             "nghuyong/ernie-tiny")
     parser.add_argument('--output_dir', default='../model_data', help='the output dir for model checkpoints')
-    parser.add_argument("--bert_type", default="albert", type=str, help="albert|ernie")
+    parser.add_argument("--bert_type", default="ernie", type=str, help="albert|ernie")
     parser.add_argument("--task_type", default="task_mrc", type=str, help="任务类型")
     parser.add_argument("--baseline", default=False, action="store_true", help="是否加载baseline目录的模型")
     parser.add_argument('--baseline_dir', default='../baseline', help='baseline 模型目录')
@@ -26,11 +27,11 @@ def args_mrc():
     parser.add_argument("--per_gpu_train_batch_size", default=128, type=int, help="train_batch_size")
     parser.add_argument("--per_gpu_eval_batch_size", default=128, type=int, help="eval_batch_size")
 
-    parser.add_argument('--save_steps', type=int, default=100, help="保存模型的的步数")
+    parser.add_argument('--save_steps', type=int, default=200, help="保存模型的的步数")
     parser.add_argument('--logging_steps', type=int, default=50, help="Log every X updates steps.")
 
     # warmup
-    parser.add_argument("--num_train_epochs", default=10, type=float, help="训练次数")
+    parser.add_argument("--num_train_epochs", default=200, type=float, help="训练次数")
     parser.add_argument("--max_steps", default=-1, type=int, help="训练总次数，会覆盖 num_train_epochs")
     parser.add_argument("--learning_rate", default=5e-5, type=float, help="The initial learning rate for Adam.")
     parser.add_argument("--warmup_steps", default=0, type=int, help="Linear warmup over warmup_steps.")

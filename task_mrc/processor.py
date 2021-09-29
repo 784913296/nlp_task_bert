@@ -1,6 +1,7 @@
 import os
 import logging
 import pandas as pd
+from tqdm import tqdm
 import torch
 from torch.utils.data import TensorDataset
 from transformers.data.processors.utils import DataProcessor
@@ -45,7 +46,8 @@ class mrcProcessor(DataProcessor):
 def convert_examples_to_features(examples, tokenizer, max_seq_length, doc_stride, max_query_length, mode):
     unique_id = 1000000000
     features = []
-    for (example_index, example) in enumerate(examples):
+    feature_iterator = tqdm(examples, desc="正在生成{} features".format(mode))
+    for (example_index, example) in enumerate(feature_iterator):
         question_text = tokenizer.tokenize(example.question_text)
         if len(question_text) > max_query_length:
             question_text = question_text[:max_query_length]
@@ -185,22 +187,6 @@ def convert_examples_to_features(examples, tokenizer, max_seq_length, doc_stride
     return features
 
 
-# args = args_mrc()
-# logging.basicConfig(format='%(asctime)s - %(levelname)s %(message)s',
-#                     datefmt='%m/%d/%Y %H:%M:%S',
-#                     level=logging.INFO if args.local_rank in [-1, 0] else logging.WARN)
-# processor = mrcProcessor(args)
-# examples = processor.get_train_examples()
-# tokenizer = create_tokenizer(args)
-# features = convert_examples_to_features(examples=examples,
-#                                         tokenizer=tokenizer,
-#                                         max_seq_length=args.max_seq_length,
-#                                         doc_stride=args.doc_stride,
-#                                         max_query_length=args.max_query_length,
-#                                         mode="train")
-# print(features)
-
-
 def read_local_feature(args, mode):
     """ features 数据保存本地文件名 """
     if mode == 'train':
@@ -223,7 +209,7 @@ def get_examples(processor, mode):
 
 
 def load_and_cache_examples(args, tokenizer, mode):
-    assert mode == "train" and "dev" or "test", "mode 只支持 train|dev|test"
+    assert mode == "train" or "dev" or "test", "mode 只支持 train|dev|test"
 
     # 确保分布式训练中只有第一个进程处理数据集，其他进程将使用缓存
     if args.local_rank not in [-1, 0] and mode == "train":
@@ -235,7 +221,7 @@ def load_and_cache_examples(args, tokenizer, mode):
         logger.info("从本地文件加载 features，%s", cached_features_file)
         features = torch.load(cached_features_file)
     else:
-        logger.info("创建 features，%s", args.data_dir)
+        logger.info("创建 features")
         processor = mrcProcessor(args)
         examples = get_examples(processor, mode)
         features = convert_examples_to_features(examples=examples, tokenizer=tokenizer,
@@ -266,4 +252,21 @@ def load_and_cache_examples(args, tokenizer, mode):
         dataset = TensorDataset(all_input_ids, all_attention_mask, all_token_type_ids,
                                 all_example_index, all_cls_index, all_p_mask)
     return dataset
+
+
+if __name__ == "__main__":
+    args = args_mrc()
+    logging.basicConfig(format='%(asctime)s - %(levelname)s %(message)s',
+                        datefmt='%m/%d/%Y %H:%M:%S',
+                        level=logging.INFO if args.local_rank in [-1, 0] else logging.WARN)
+    processor = mrcProcessor(args)
+    examples = processor.get_train_examples()
+    tokenizer = create_tokenizer(args)
+    features = convert_examples_to_features(examples=examples,
+                                            tokenizer=tokenizer,
+                                            max_seq_length=args.max_seq_length,
+                                            doc_stride=args.doc_stride,
+                                            max_query_length=args.max_query_length,
+                                            mode="train")
+    print(features)
 

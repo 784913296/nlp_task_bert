@@ -12,7 +12,8 @@ class Args:
     @staticmethod
     def initialize(parser: argparse.ArgumentParser):
         parser.add_argument("--model_name", default="voidful/albert_chinese_tiny", type=str,
-                            help="voidful/albert_chinese_tiny|nghuyong/ernie-tiny")
+                            help="voidful/albert_chinese_tiny"
+                                 "nghuyong/ernie-tiny")
         parser.add_argument('--output_dir', default='../model_data', help='the output dir for model checkpoints')
         parser.add_argument("--bert_type", default="albert", type=str, help="albert|ernie")
         parser.add_argument("--task_type", default="task_classes", type=str, help="任务类型")

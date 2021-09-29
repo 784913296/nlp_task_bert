@@ -4,7 +4,7 @@ from task_ner.processor import load_and_cache_example, NerProcessor
 from utils.ner_utils import label2id_load
 from task_ner.conf import args_ner
 from models.model import create_model, create_tokenizer
-from task_ner.trainer import train, evaluate, test
+from task_ner.trainer import train
 
 
 if __name__ == '__main__':

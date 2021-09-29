@@ -19,7 +19,6 @@ def train(args, train_dataset, eval_dataset, model):
     train_sampler = RandomSampler(train_dataset)
     train_dataloader = DataLoader(train_dataset, sampler=train_sampler, batch_size=args.train_batch_size)
     t_total = len(train_dataloader) // args.gradient_accumulation_steps * args.num_train_epochs
-    model.train()
 
     no_decay = ['bias', 'LayerNorm.weight', 'transitions']
     optimizer_grouped_parameters = [
@@ -43,6 +42,7 @@ def train(args, train_dataset, eval_dataset, model):
     set_seed(args)
     best_f1 = 0.
     for _ in train_iterator:
+        model.train()
         epoch_iterator = tqdm(train_dataloader, desc="Iteration")
         for step, batch in enumerate(epoch_iterator):
             batch = tuple(t.to(args.device) for t in batch)

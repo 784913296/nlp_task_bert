@@ -6,7 +6,7 @@ import torch
 from transformers import AlbertConfig, BertTokenizer, AlbertForSequenceClassification, \
     AutoConfig, AutoTokenizer, AutoModelForSequenceClassification, AlbertForQuestionAnswering
 from utils.util import ensemble_vote
-from task_ner.albert_crf import AlbertCrfForNer
+from models.albert import AlbertCrfForNer, AlbertSentenceReModel
 
 logger = logging.getLogger(__name__)
 MODEL_CLASSES = {
@@ -14,23 +14,25 @@ MODEL_CLASSES = {
         "task_classes": (AlbertConfig, AlbertForSequenceClassification, BertTokenizer),
         "task_sim": (AlbertConfig, AlbertForSequenceClassification, BertTokenizer),
         "task_ner": (AlbertConfig, AlbertCrfForNer, BertTokenizer),
-        "task_mrc": (AlbertConfig, AlbertForQuestionAnswering, BertTokenizer)
+        "task_mrc": (AlbertConfig, AlbertForQuestionAnswering, BertTokenizer),
+        "task_relationExtraction": (AlbertConfig, AlbertSentenceReModel, BertTokenizer),
     },
     'ernie': {
         "task_classes": (AutoConfig, AutoModelForSequenceClassification, AutoTokenizer),
         "task_sim": (AutoConfig, AutoModelForSequenceClassification, AutoTokenizer),
+        "task_mrc": (AlbertConfig, AlbertForQuestionAnswering, BertTokenizer)
     }
 }
 
 
 def create_tokenizer(args, **kwards):
     config_class, model_class, tokenizer_class = MODEL_CLASSES[args.bert_type][args.task_type]
-    tokenizer_kwards = {'do_lower_case': args.do_lower_case}
+    # tokenizer_kwards = {'do_lower_case': args.do_lower_case}
     tokenizer = tokenizer_class.from_pretrained(args.model_name, **kwards)
     return tokenizer
 
 
-def create_model(args, model_file):
+def create_model(args, model_file=""):
     config_class, model_class, tokenizer_class = MODEL_CLASSES[args.bert_type][args.task_type]
     config = config_class.from_pretrained(args.model_name, num_labels=args.num_labels)
     model = model_class(config=config)
