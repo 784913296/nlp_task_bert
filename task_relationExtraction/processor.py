@@ -12,8 +12,8 @@ from task_relationExtraction.util import InputExample, InputFeatures, get_label2
 logger = logging.getLogger(__name__)
 
 
-def convert_pos_to_mask(e_pos, max_len=128):
-    e_pos_mask = [0] * max_len
+def convert_pos_to_mask(e_pos, max_length=128):
+    e_pos_mask = [0] * max_length
     for i in range(e_pos[0], e_pos[1]):
         e_pos_mask[i] = 1
     return e_pos_mask

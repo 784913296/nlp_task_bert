@@ -19,10 +19,10 @@ def args_relation_extraction():
     parser.add_argument("--labels_file", type=str, default="../data/task_relationExtraction/relation.txt")
 
     # 训练参数
-    parser.add_argument("--num_train_epochs", default=10, type=int, help="epoch 数目")
+    parser.add_argument("--num_train_epochs", default=20, type=int, help="epoch 数目")
     parser.add_argument("--max_length", type=int, default=128)
-    parser.add_argument("--train_batch_size", type=int, default=64)
-    parser.add_argument("--eval_batch_size", type=int, default=64)
+    parser.add_argument("--train_batch_size", type=int, default=128)
+    parser.add_argument("--eval_batch_size", type=int, default=128)
     parser.add_argument("--save_steps", type=int, default=200, help="保存检查点的步数")
     parser.add_argument('--dropout', type=float, default=0.1, required=False, help='dropout')
     parser.add_argument("--seed", type=int, default=42)

@@ -5,6 +5,7 @@ import torch
 from torch.utils.data import TensorDataset
 from transformers.data.processors.utils import DataProcessor
 from utils.ner_utils import bio_to_bioes
+from tqdm import tqdm
 
 
 logger = logging.getLogger(__name__)
@@ -81,10 +82,10 @@ class NerProcessor(DataProcessor):
 
 
 def crf_convert_examples_to_features(args, examples, tokenizer, max_length=256, label_list=None):
-
+    logger.info("正在生成 features")
     label2id = args.label2id
     features = []
-    for (ex_index, example) in enumerate(examples):
+    for (ex_index, example) in enumerate(tqdm(examples, desc="Iteration")):
         tokenizer_inputs = tokenizer.encode_plus(example.text, add_special_tokens=True, max_length=max_length,
                                        pad_to_max_length=True, truncation="longest_first")
         input_ids = tokenizer_inputs["input_ids"]

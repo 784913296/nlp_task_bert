@@ -17,12 +17,13 @@ if __name__ == '__main__':
     args.num_labels = len(args.id2lable)
 
     tokenizer = create_tokenizer(args)
-    model_file = ""
+    model_file = "../model_data/albert/task_relationExtraction/checkpoint-1400/pytorch_model.bin"
     model = create_model(args, model_file)
     model.to(args.device)
 
-    train_dataset = load_and_cache_example(args, tokenizer, processor, mode="train")
+    # train_dataset = load_and_cache_example(args, tokenizer, processor, mode="train")
+    # train(args, model, train_dataset)
+
     dev_dataset = load_and_cache_example(args, tokenizer, processor, mode="dev")
-    train(args, model, train_dataset)
     print(evaluate(args, model, dev_dataset, args.id2lable))
 
