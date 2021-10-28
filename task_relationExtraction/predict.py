@@ -1,6 +1,6 @@
 import re
 import torch
-from task_relationExtraction.conf import args_relation_extraction
+from task_relationExtraction.conf import args_relationExtraction
 from task_relationExtraction.util import get_id2label
 from task_relationExtraction.processor import get_pos, convert_pos_to_mask
 from models.model import create_model, create_tokenizer
@@ -45,7 +45,7 @@ def predict(args, model, tokenizer, text, entity1, entity2):
 
 
 if __name__ == '__main__':
-    args = args_relation_extraction()
+    args = args_relationExtraction()
     args.id2label = get_id2label(args.labels_file)
     args.num_labels = len(args.id2label)
     tokenizer = create_tokenizer(args)

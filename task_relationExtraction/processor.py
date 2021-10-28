@@ -6,7 +6,7 @@ import torch
 from torch.utils.data import TensorDataset
 from transformers.data.processors.utils import DataProcessor
 from transformers import BertTokenizer
-from task_relationExtraction.conf import args_relation_extraction
+from task_relationExtraction.conf import args_relationExtraction
 from task_relationExtraction.util import InputExample, InputFeatures, get_label2id
 
 logger = logging.getLogger(__name__)
@@ -170,7 +170,7 @@ def load_and_cache_example(args, tokenizer, processor, mode):
 
 
 if __name__ == "——main__":
-    args = args_relation_extraction()
+    args = args_relationExtraction()
     processor = relationExProcessor()
     train_examples = processor.get_train_examples(args.data_dir)
     tokenizer = BertTokenizer.from_pretrained(args.model_name)

@@ -2,7 +2,7 @@ import argparse
 import torch
 
 
-def args_relation_extraction():
+def args_relationExtraction():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_name", default="voidful/albert_chinese_tiny", type=str,
                         help="voidful/albert_chinese_tiny | nghuyong/ernie-tiny")
@@ -26,7 +26,6 @@ def args_relation_extraction():
     parser.add_argument("--save_steps", type=int, default=200, help="保存检查点的步数")
     parser.add_argument('--dropout', type=float, default=0.1, required=False, help='dropout')
     parser.add_argument("--seed", type=int, default=42)
-
 
     # optimizer
     parser.add_argument("--learning_rate", default=5e-5, type=float, help="学习率")
